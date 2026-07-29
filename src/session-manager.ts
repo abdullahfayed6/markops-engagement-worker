@@ -43,7 +43,7 @@ export class SessionManager {
   async execute(accountId: string, input: ActionRequest) {
     const fingerprint = this.approvals.fingerprint(accountId, input.postUrl, input.action, input.action === 'react' ? input.reaction : undefined, input.action === 'comment' ? input.comment : undefined);
     const started = await this.approvals.begin(accountId, input.approvalId, fingerprint);
-    if (started.duplicate && started.record.status === 'completed') return this.response(accountId, undefined, { status: 'completed', result: { approvalId: input.approvalId, idempotent: true, finalState: started.record.finalState ?? null } });
+    if (started.duplicate) return this.response(accountId, undefined, { status: started.record.status as SessionStatus, errorCode: started.record.status === 'outcome_unknown' ? 'OUTCOME_UNKNOWN' : null, result: { approvalId: input.approvalId, idempotent: true, previousState: started.record.previousState ?? null, finalState: started.record.finalState ?? null } });
     return this.perform(accountId, input, started.record);
   }
   private async perform(accountId: string, input: ActionRequest, record: ApprovalRecord): Promise<WorkerResponse> {
