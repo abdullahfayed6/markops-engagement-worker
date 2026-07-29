@@ -1,4 +1,4 @@
-export type SessionStatus = 'idle' | 'active' | 'logged_in' | 'cancelled' | 'expired' | 'error';
+export type SessionStatus = 'idle' | 'starting' | 'browser_ready' | 'manual_intervention_required' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed_out' | 'session_expired' | 'outcome_unknown';
 
 export interface WorkerResponse {
   accountId: string;
@@ -8,6 +8,8 @@ export interface WorkerResponse {
   loggedIn: boolean;
   errorCode: string | null;
   errorMessage: string | null;
+  requestId?: string;
+  result?: Record<string, unknown>;
 }
 
 export class ApiError extends Error {

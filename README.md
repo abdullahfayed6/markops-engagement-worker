@@ -1,86 +1,73 @@
 # MarkOps Engagement Worker
 
-A separate Node.js/TypeScript worker for manually establishing and preserving isolated Facebook browser sessions. This phase intentionally has **no Like or Comment automation**. It never stores passwords, and it does not solve or bypass CAPTCHAs, checkpoints, 2FA, or any other Facebook security challenge.
+Railway-deployable, manual-browser worker for isolated Facebook account profiles. It uses headed Chromium, Xvfb, x11vnc, and noVNC. It does not store passwords, solve CAPTCHA/2FA/checkpoints, use stealth or proxy rotation, generate comments, or run scheduled/bulk actions.
 
-## What it does
+## Local development
 
-- Creates one persistent Chromium profile per valid account ID at `/data/accounts/{accountId}`.
-- Uses atomic per-account lock files, so a profile cannot be opened by two worker browser processes at once.
-- Enforces `MAX_ACTIVE_BROWSERS` globally (default `1`).
-- Launches headed Chromium on Xvfb and exposes the active display through noVNC.
-- Lets the user complete all Facebook verification manually, then checks for Facebook's authenticated session cookies before saving/closing the profile.
-- Times out abandoned browser sessions and closes Chromium before releasing the lock.
+```powershell
+Copy-Item .env.example .env
+# Set a random 24+ character WORKER_SECRET and PUBLIC_BASE_URL=http://localhost:3000
+npm install
+npx playwright install chromium
+npm run check
+npm run build
+npm test
+npm start
+```
 
-`accountId` must match `^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`; paths are constructed only after this validation.
+On Windows, Chromium opens as a desktop window. noVNC is supplied by the Docker entrypoint, so `viewerUrl` is intended for Docker/Railway.
+
+## Docker
+
+```bash
+docker build -t markops-engagement-worker .
+docker run --rm -p 3000:3000 -v worker-data:/data --env-file .env markops-engagement-worker
+```
+
+The container starts Xvfb, x11vnc, websockify/noVNC, and the worker. SIGTERM/SIGINT closes active browser contexts before exit.
 
 ## Railway deployment
 
-1. Create a new Railway project and deploy this repository as a **separate service**. Do not add it to the MarkOps application service.
-2. Add a Railway Volume mounted at `/data`. This is required; without it, account sessions are lost on each deployment.
-3. Add these Railway variables (use a long random value for `WORKER_SECRET`):
+1. Create a **separate** Railway service from this repository; no Docker Compose is required.
+2. Add a Railway Volume mounted exactly at `/data`.
+3. Add variables: `WORKER_SECRET` (long random secret), `PUBLIC_BASE_URL` (the generated Railway HTTPS domain), `PROFILE_ROOT=/data/accounts`, `MAX_ACTIVE_BROWSERS=2`, `SESSION_TIMEOUT_SECONDS=900`, `FACEBOOK_ALLOWED_HOSTS=facebook.com,www.facebook.com,m.facebook.com`, and optionally `MARKOPS_URL`.
+4. Railway supplies `PORT`; do not hard-code it. Deploy with the included `Dockerfile` and `railway.toml`.
+5. Configure Railway health check path `/health`. It is intentionally public; every worker/API endpoint is protected by `X-Worker-Secret`.
 
-   ```text
-   PORT=3000
-   WORKER_SECRET=<at-least-24-character-secret>
-   PROFILE_ROOT=/data/accounts
-   MAX_ACTIVE_BROWSERS=1
-   SESSION_TIMEOUT_SECONDS=900
-   PUBLIC_BASE_URL=https://<the-public-worker-domain>
-   MARKOPS_URL=https://<your-markops-domain>
-   ```
+Profiles are persisted at `/data/accounts/{accountId}`. Approval idempotency records live under `/data/accounts/.approvals` and contain hashes and state only—not comment text or browser data.
 
-4. Generate a Railway public domain, then set `PUBLIC_BASE_URL` to that exact HTTPS URL and redeploy. The `viewerUrl` response uses this value.
-5. Railway supplies `PORT` at runtime; the example value is only for local use. The server listens on `0.0.0.0`.
-6. The Docker image includes an internal Docker health check that calls `GET /health` with the required secret header. Do not configure Railway's unauthenticated HTTP health-check path: Railway health checks cannot add `X-Worker-Secret`, while this worker intentionally protects every endpoint.
+## Viewer embedding
 
-## Local run
+`login/start`, manual intervention, and unknown outcomes return a short-lived-session `viewerUrl`. Embed it in MarkOps in an iframe or open it in a new tab. It contains an opaque session viewer token, never `WORKER_SECRET`; noVNC WebSockets validate that token through the same Railway domain. Treat the viewer URL as sensitive and do not log it.
 
-Copy `.env.example` to `.env`, set real values, then run:
+## API sequence
+
+All API calls except `GET /health` require `X-Worker-Secret`.
+
+```powershell
+$h=@{'X-Worker-Secret'=$env:WORKER_SECRET}
+# 1. Start manual login
+$login=Invoke-RestMethod -Method Post -Uri "$env:PUBLIC_BASE_URL/accounts/account-1/login/start" -Headers $h
+# 2. Open $login.viewerUrl in MarkOps/browser and complete Facebook login yourself.
+# 3. Persist the verified session and close Chromium
+Invoke-RestMethod -Method Post -Uri "$env:PUBLIC_BASE_URL/accounts/account-1/session/continue" -Headers $h
+# 4. Inspect visible post information
+Invoke-RestMethod -Method Post -Uri "$env:PUBLIC_BASE_URL/accounts/account-1/posts/inspect" -Headers $h -ContentType application/json -Body '{"postUrl":"https://www.facebook.com/example/posts/123"}'
+# 5. Execute exactly one approved action
+Invoke-RestMethod -Method Post -Uri "$env:PUBLIC_BASE_URL/accounts/account-1/posts/execute" -Headers $h -ContentType application/json -Body '{"postUrl":"https://www.facebook.com/example/posts/123","action":"react","reaction":"like","approvalId":"approval-000001"}'
+```
+
+curl equivalent:
 
 ```bash
-npm install
-npm run dev
+curl -X POST "$PUBLIC_BASE_URL/accounts/account-1/posts/inspect" -H "X-Worker-Secret: $WORKER_SECRET" -H 'Content-Type: application/json' -d '{"postUrl":"https://www.facebook.com/example/posts/123"}'
 ```
 
-For headed Chromium locally, run under an X server (Linux) or use Docker. The production Docker entrypoint starts Xvfb, x11vnc, and noVNC automatically.
+## Behaviour and limitations
 
-## API
-
-Every endpoint requires:
-
-```http
-X-Worker-Secret: <WORKER_SECRET>
-```
-
-| Method | Endpoint | Purpose |
-|---|---|---|
-| GET | `/health` | Authenticated liveness response |
-| POST | `/accounts/:accountId/login/start` | Start a manual, headed Facebook-login session |
-| GET | `/accounts/:accountId/session` | Inspect an active session |
-| POST | `/accounts/:accountId/session/continue` | Verify login cookies, persist profile, and close browser |
-| POST | `/accounts/:accountId/session/cancel` | Close browser without login confirmation |
-| POST | `/accounts/:accountId/session/validate` | Check saved session cookies safely |
-| DELETE | `/accounts/:accountId` | Delete an inactive account's profile |
-
-All account endpoints return this shape:
-
-```json
-{
-  "accountId": "example-account",
-  "sessionId": "uuid-or-null",
-  "status": "active",
-  "viewerUrl": "https://worker.example/novnc/vnc.html?...",
-  "loggedIn": false,
-  "errorCode": null,
-  "errorMessage": null
-}
-```
-
-Start a login, then open the returned `viewerUrl` inside MarkOps (an iframe or a new tab). noVNC's WebSocket handshake also requires `X-Worker-Secret`; MarkOps should attach it when embedding/proxying the viewer. Complete login/2FA/CAPTCHA/checkpoints yourself in the browser, then call `/session/continue`. If login cannot be confirmed, the browser stays open so the user can resolve it manually.
-
-## Security and operational notes
-
-- Never place Facebook passwords in MarkOps or this worker. Login state is limited to Chromium's encrypted profile files on the mounted volume.
-- noVNC itself has no separate password because access is gated by the worker-secret header. Restrict the worker domain to MarkOps or place it behind an authenticated MarkOps reverse proxy before broad production use.
-- The on-disk account lock is intentionally retained if the worker crashes rather than risking concurrent access to a Chromium profile. Restart/recovery should inspect the lock before removing it; do not delete a lock while a worker may still be running.
-- A session timeout is not a Facebook logout. It safely closes the browser and retains the profile if Facebook has already set its session cookies.
+- `GET /accounts` lists stored profile directories; account IDs allow only letters, digits, `_`, and `-`.
+- Browser profiles have atomic per-account locks and global `MAX_ACTIVE_BROWSERS` capacity.
+- Inspection reads rendered, visible text only and never stores raw Facebook HTML.
+- Actions require unique `approvalId`; duplicate identical approvals return the recorded result. Comment content is used only for the requested visible UI action and is never logged or persisted by the worker.
+- If login, consent, CAPTCHA, 2FA, checkpoint, session expiry, or another security screen is detected, the worker returns `manual_intervention_required`, keeps the browser open, and resumes the pending approved action only after `session/continue`.
+- Facebook UI changes can make a visible selector unconfirmable. The worker returns `outcome_unknown` and never auto-retries comments in that case.
