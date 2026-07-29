@@ -43,8 +43,13 @@ export class SessionManager {
   async execute(accountId: string, input: ActionRequest) {
     const fingerprint = this.approvals.fingerprint(accountId, input.postUrl, input.action, input.action === 'react' ? input.reaction : undefined, input.action === 'comment' ? input.comment : undefined);
     const started = await this.approvals.begin(accountId, input.approvalId, fingerprint);
-    if (started.duplicate) return this.response(accountId, undefined, { status: started.record.status as SessionStatus, errorCode: started.record.status === 'outcome_unknown' ? 'OUTCOME_UNKNOWN' : null, result: { approvalId: input.approvalId, idempotent: true, previousState: started.record.previousState ?? null, finalState: started.record.finalState ?? null } });
-    return this.perform(accountId, input, started.record);
+    if (started.duplicate) {
+      if (started.record.status === 'running') await this.approvals.complete(started.record, 'outcome_unknown');
+      const status = started.record.status === 'running' ? 'outcome_unknown' : started.record.status as SessionStatus;
+      return this.response(accountId, undefined, { status, errorCode: status === 'outcome_unknown' ? 'OUTCOME_UNKNOWN' : null, result: { approvalId: input.approvalId, idempotent: true, previousState: started.record.previousState ?? null, finalState: started.record.finalState ?? null } });
+    }
+    try { return await this.perform(accountId, input, started.record); }
+    catch { await this.approvals.complete(started.record, 'outcome_unknown'); return this.response(accountId, undefined, { status: 'outcome_unknown', errorCode: 'OUTCOME_UNKNOWN', errorMessage: 'The action could not start or be confirmed; it was not retried.', result: { approvalId: input.approvalId } }); }
   }
   private async perform(accountId: string, input: ActionRequest, record: ApprovalRecord): Promise<WorkerResponse> {
     const { s, transient } = await this.usePage(accountId, input.postUrl); const security = await detectSecurityState(s.page);
