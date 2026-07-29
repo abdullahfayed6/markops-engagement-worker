@@ -1,0 +1,25 @@
+{
+  "name": "markops-engagement-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "http-proxy": "^1.18.1",
+    "playwright": "^1.54.0",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.1",
+    "@types/http-proxy": "^1.17.16",
+    "@types/node": "^22.15.29",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}
