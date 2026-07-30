@@ -8,7 +8,12 @@ const configSchema = z.object({
   SESSION_TIMEOUT_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
   PUBLIC_BASE_URL: z.string().url(),
   FACEBOOK_ALLOWED_HOSTS: z.string().default('facebook.com,www.facebook.com,m.facebook.com'),
-  MARKOPS_URL: z.string().url().optional()
+  MARKOPS_URL: z.string().url().optional(),
+  // Optional residential proxy — format: http://user:pass@host:port
+  // When set, all Playwright browser traffic is routed through this proxy.
+  // Use a residential proxy provider (Bright Data, Smartproxy, Oxylabs, etc.)
+  // to avoid Facebook's data-center IP detection.
+  BROWSER_PROXY: z.string().url().optional(),
 });
 
 const testDefaults = process.env.VITEST ? { WORKER_SECRET: 'test-worker-secret-with-adequate-length', PUBLIC_BASE_URL: 'http://localhost:3000' } : {};
