@@ -23,7 +23,8 @@ export class SessionManager {
     if (this.sessions.size >= config.MAX_ACTIVE_BROWSERS) throw new ApiError('BROWSER_CAPACITY_REACHED', 'Global active browser limit has been reached.', 429);
     const sessionId = randomUUID(); const release = await this.locks.acquire(accountId, sessionId);
     try {
-      const context = await chromium.launchPersistentContext(this.locks.profilePath(accountId), { headless: !interactive, viewport: { width: 1440, height: 900 }, args: ['--no-sandbox', '--disable-dev-shm-usage', '--no-first-run', '--no-default-browser-check', '--disable-background-networking'] });
+      const context = await chromium.launchPersistentContext(this.locks.profilePath(accountId), { headless: !interactive, viewport: { width: 1280, height: 720 }, args: ['--no-sandbox', '--disable-dev-shm-usage', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-gpu', '--disable-software-rasterizer', '--disable-extensions', '--disable-default-apps', '--disable-sync', '--disable-translate', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-features=TranslateUI,BlinkGenPropertyTrees', '--mute-audio', '--hide-scrollbars', '--metrics-recording-only', '--memory-pressure-off', '--js-flags=--max-old-space-size=256'] });
+
       const page = context.pages()[0] ?? await context.newPage();
       const session = { accountId, sessionId, viewerToken: randomBytes(24).toString('base64url'), context, page, release, status: 'browser_ready' as SessionStatus, timeout: undefined as unknown as NodeJS.Timeout };
       session.timeout = setTimeout(() => void this.close(session, 'timed_out'), config.SESSION_TIMEOUT_SECONDS * 1000);
