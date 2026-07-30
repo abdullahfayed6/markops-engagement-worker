@@ -1,8 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { BrowserContext, Locator, Page } from 'playwright';
-import { chromium } from 'playwright-extra';
-import stealth from 'puppeteer-extra-plugin-stealth';
-chromium.use(stealth());
+import { BrowserContext, Locator, Page, chromium } from 'playwright';
 import { config } from './config.js';
 import { AccountLockManager } from './account-lock-manager.js';
 import { ApprovalRecord, ApprovalStore } from './approval-store.js';
@@ -47,7 +44,7 @@ export class SessionManager {
           proxySettings = { proxy: { server: resolvedProxy } };
         }
       }
-      const context = await chromium.launchPersistentContext(this.locks.profilePath(accountId), { headless: !interactive, viewport: { width: 1280, height: 720 }, ...proxySettings, args: ['--no-sandbox', '--disable-dev-shm-usage', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-gpu', '--disable-software-rasterizer', '--disable-extensions', '--disable-default-apps', '--disable-sync', '--disable-translate', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-features=TranslateUI,BlinkGenPropertyTrees', '--mute-audio', '--hide-scrollbars', '--metrics-recording-only', '--memory-pressure-off', '--js-flags=--max-old-space-size=256'] });
+      const context = await chromium.launchPersistentContext(this.locks.profilePath(accountId), { headless: !interactive, viewport: { width: 1280, height: 720 }, ...proxySettings, args: ['--no-sandbox', '--disable-dev-shm-usage', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-gpu', '--disable-software-rasterizer', '--disable-extensions', '--disable-default-apps', '--disable-sync', '--disable-translate', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-features=TranslateUI,BlinkGenPropertyTrees', '--mute-audio', '--hide-scrollbars', '--metrics-recording-only', '--memory-pressure-off', '--js-flags=--max-old-space-size=256', '--disable-blink-features=AutomationControlled'] });
 
       const page = context.pages()[0] ?? await context.newPage();
       const session = { accountId, sessionId, viewerToken: randomBytes(24).toString('base64url'), context, page, release, status: 'browser_ready' as SessionStatus, timeout: undefined as unknown as NodeJS.Timeout };
