@@ -33,11 +33,11 @@ export function createApp() {
   const account = (req: Request) => { const value = req.params.accountId; if (Array.isArray(value) || !value) throw new ApiError('INVALID_ACCOUNT_ID', 'accountId must be a single path value.'); return assertAccountId(value); };
   app.get('/accounts', async (_req, res) => { let accountIds: string[] = []; try { accountIds = (await readdir(config.PROFILE_ROOT, { withFileTypes: true })).filter((x) => x.isDirectory() && !x.name.startsWith('.')).map((x) => x.name).filter((x) => { try { assertAccountId(x); return true; } catch { return false; } }); } catch { /* empty */ } res.json({ accountIds, maxActiveBrowsers: config.MAX_ACTIVE_BROWSERS }); });
   const proxySchema = z.object({ proxy: z.string().url().nullish() });
-  app.post('/accounts/:accountId/login/start', async (req, res) => { const { proxy } = proxySchema.parse(req.body); res.status(201).json(await sessions.start(account(req), proxy)); });
+  app.post('/accounts/:accountId/login/start', async (req, res) => { const { proxy } = proxySchema.parse(req.body); res.status(201).json(await sessions.start(account(req), proxy ?? undefined)); });
   app.get('/accounts/:accountId/session', async (req, res) => res.json(await sessions.get(account(req))));
   app.post('/accounts/:accountId/session/continue', async (req, res) => res.json(await sessions.continue(account(req))));
   app.post('/accounts/:accountId/session/cancel', async (req, res) => res.json(await sessions.cancel(account(req))));
-  app.post('/accounts/:accountId/session/validate', async (req, res) => { const { proxy } = proxySchema.parse(req.body); res.json(await sessions.validate(account(req), proxy)); });
+  app.post('/accounts/:accountId/session/validate', async (req, res) => { const { proxy } = proxySchema.parse(req.body); res.json(await sessions.validate(account(req), proxy ?? undefined)); });
   app.delete('/accounts/:accountId', async (req, res) => { const id = account(req); await locks.removeProfile(id); res.json({ accountId: id, sessionId: null, status: 'completed', viewerUrl: null, loggedIn: false, errorCode: null, errorMessage: null }); });
   app.post('/accounts/:accountId/posts/inspect', async (req, res) => { const postUrl = z.object({ postUrl: z.string() }).parse(req.body).postUrl; res.json(await sessions.inspect(account(req), assertFacebookUrl(postUrl).toString())); });
   app.post('/accounts/:accountId/posts/execute', async (req, res) => { const action = actionSchema.parse(req.body); action.postUrl = assertFacebookUrl(action.postUrl).toString(); res.json(await sessions.execute(account(req), action)); });
