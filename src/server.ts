@@ -16,7 +16,19 @@ export function createApp() {
   app.disable('x-powered-by'); app.use(express.json({ limit: '32kb' }));
   app.use((req, res, next) => { const requestId = req.header('X-Request-Id')?.slice(0, 128) || randomUUID(); res.setHeader('X-Request-Id', requestId); res.locals.requestId = requestId; res.on('finish', () => console.log(JSON.stringify({ level: 'info', event: 'request_complete', requestId, method: req.method, statusCode: res.statusCode }))); next(); });
   app.get('/health', (_req, res) => res.json({ status: 'ok' }));
-  app.use('/novnc', (req, res) => { const token = typeof req.query.token === 'string' ? req.query.token : undefined; if (!sessions.canView(token)) return res.status(401).end(); return proxy.web(req, res); });
+  // noVNC viewer: enforce token only on the main entry (vnc.html / root).
+  // Static assets (JS, CSS, sounds, images) are fetched by the browser without
+  // carrying the session token in their URL, so they must pass through freely.
+  // The WebSocket upgrade (websockify) is guarded separately in server.on('upgrade').
+  app.use('/novnc', (req, res) => {
+    const isEntryPage = req.path === '/vnc.html' || req.path === '/' || req.path === '';
+    if (isEntryPage) {
+      const token = typeof req.query.token === 'string' ? req.query.token : undefined;
+      if (!sessions.canView(token)) return res.status(401).end();
+    }
+    return proxy.web(req, res);
+  });
+
   app.use((req, res, next) => isAuthorized(req.header('X-Worker-Secret')) ? next() : res.status(401).json(errorBody('', res.locals.requestId, 'UNAUTHORIZED', 'Missing or invalid X-Worker-Secret.')));
   const account = (req: Request) => { const value = req.params.accountId; if (Array.isArray(value) || !value) throw new ApiError('INVALID_ACCOUNT_ID', 'accountId must be a single path value.'); return assertAccountId(value); };
   app.get('/accounts', async (_req, res) => { let accountIds: string[] = []; try { accountIds = (await readdir(config.PROFILE_ROOT, { withFileTypes: true })).filter((x) => x.isDirectory() && !x.name.startsWith('.')).map((x) => x.name).filter((x) => { try { assertAccountId(x); return true; } catch { return false; } }); } catch { /* empty */ } res.json({ accountIds, maxActiveBrowsers: config.MAX_ACTIVE_BROWSERS }); });
