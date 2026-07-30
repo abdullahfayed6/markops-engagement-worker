@@ -1,4 +1,4 @@
-import { Page } from 'playwright';
+import { Locator, Page } from 'playwright';
 
 export type SecurityState = 'logged_out' | 'manual_intervention_required' | 'ready';
 export function classifyFacebookPage(url: string, text: string, hasLoginForm: boolean): SecurityState {
@@ -11,8 +11,8 @@ export async function detectSecurityState(page: Page): Promise<SecurityState> {
   return classifyFacebookPage(url, text, (await page.locator('input[name="email"], input[name="pass"], [aria-label="Email address or mobile number"]').count()) > 0);
 }
 
-export async function inspectVisiblePost(page: Page): Promise<Record<string, unknown>> {
-  const article = page.locator('[role="article"]').first(); const root = await article.count() ? article : page.locator('body');
+export async function inspectVisiblePost(page: Page, target?: Locator): Promise<Record<string, unknown>> {
+  const article = page.locator('[role="article"]').first(); const root = target ?? (await article.count() ? article : page.locator('body'));
   const text = (await root.innerText()).trim().slice(0, 12000);
   const author = await root.locator('h2 a, h3 a, strong a').first().innerText().catch(() => null);
   const imageCount = await root.locator('img').count(); const hasVideo = await root.locator('video, [role="button"][aria-label*="Play"]').count() > 0;
