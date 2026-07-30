@@ -30,11 +30,26 @@ The container starts Xvfb, x11vnc, websockify/noVNC, and the worker. SIGTERM/SIG
 
 ## Railway deployment
 
-1. Create a **separate** Railway service from this repository; no Docker Compose is required.
-2. Add a Railway Volume mounted exactly at `/data`.
-3. Add variables: `WORKER_SECRET` (long random secret), `PUBLIC_BASE_URL` (the generated Railway HTTPS domain), `PROFILE_ROOT=/data/accounts`, `MAX_ACTIVE_BROWSERS=2`, `SESSION_TIMEOUT_SECONDS=900`, `FACEBOOK_ALLOWED_HOSTS=facebook.com,www.facebook.com,m.facebook.com`, and optionally `MARKOPS_URL`.
-4. Railway supplies `PORT`; do not hard-code it. Deploy with the included `Dockerfile` and `railway.toml`.
-5. Configure Railway health check path `/health`. It is intentionally public; every worker/API endpoint is protected by `X-Worker-Secret`.
+1. Push this repository to GitHub, then in Railway choose **New Project → Deploy from GitHub repo** and select `markops-engagement-worker`. Keep it as one service; Docker Compose is not required.
+2. Open the service, choose **Volumes → Add Volume**, and set the mount path to exactly `/data`. Do this before creating real Facebook profiles.
+3. Under **Settings → Networking → Public Networking**, generate a Railway domain. Copy the full HTTPS URL without a trailing slash.
+4. Under **Variables**, set the values below. Generate `WORKER_SECRET` with `openssl rand -hex 32` or PowerShell `[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLower()`.
+
+   ```env
+   WORKER_SECRET=<64-character-random-secret>
+   PUBLIC_BASE_URL=https://<generated-domain>.up.railway.app
+   PROFILE_ROOT=/data/accounts
+   MAX_ACTIVE_BROWSERS=1
+   SESSION_TIMEOUT_SECONDS=900
+   FACEBOOK_ALLOWED_HOSTS=facebook.com,www.facebook.com,m.facebook.com
+   MARKOPS_URL=https://<your-markops-domain>
+   ```
+
+5. Do **not** create a `PORT` variable; Railway injects it. Do not override the build or start commands: Railway uses the root `Dockerfile`, while `railway.toml` configures `/health` with a 120-second deployment timeout.
+6. Deploy and wait for the health check to pass. Verify `https://<generated-domain>.up.railway.app/health` returns `{"status":"ok"}`.
+7. Keep **Replicas = 1**. Multiple account profiles are supported, but this release deliberately uses one shared Xvfb/noVNC desktop and `MAX_ACTIVE_BROWSERS=1`.
+
+If `PUBLIC_BASE_URL` changes after a custom-domain change, update the variable and redeploy so newly returned `viewerUrl` values use the correct public origin. Railway proxies HTTP and the noVNC WebSocket over this same public service/domain.
 
 Profiles are persisted at `/data/accounts/{accountId}`. Approval idempotency records live under `/data/accounts/.approvals` and contain hashes and state only—not comment text or browser data.
 
@@ -69,6 +84,7 @@ curl -X POST "$PUBLIC_BASE_URL/accounts/account-1/posts/inspect" -H "X-Worker-Se
 
 - `GET /accounts` lists stored profile directories; account IDs allow only letters, digits, `_`, and `-`.
 - Browser profiles have atomic per-account locks and global `MAX_ACTIVE_BROWSERS` capacity.
+- Keep `MAX_ACTIVE_BROWSERS=1` on the current single-display noVNC deployment. Multiple stored accounts are supported sequentially; raising concurrency would display multiple headed sessions on the same Xvfb desktop.
 - Inspection reads rendered, visible text only and never stores raw Facebook HTML.
 - Actions require unique `approvalId`; duplicate identical approvals return the recorded result. Comment content is used only for the requested visible UI action and is never logged or persisted by the worker.
 - If login, consent, CAPTCHA, 2FA, checkpoint, session expiry, or another security screen is detected, the worker returns `manual_intervention_required`, keeps the browser open, and resumes the pending approved action only after `session/continue`.

@@ -391,7 +391,7 @@ Do not apply short generic HTTP timeouts to browser-starting or Facebook-navigat
 - Set `PROFILE_ROOT=/data/accounts`.
 - Set `PUBLIC_BASE_URL` to the worker's public HTTPS domain.
 - Set the same long `WORKER_SECRET` in the worker and MarkOps backend secret stores.
-- Start with `MAX_ACTIVE_BROWSERS=1` or `2` according to Railway memory.
+- Set `MAX_ACTIVE_BROWSERS=1`. The current container has one Xvfb/noVNC desktop; multiple stored accounts are supported sequentially, but simultaneous headed sessions would share that desktop.
 - Configure health path `/health`.
 - Do not use multiple Railway replicas with a single shared profile unless profile locking/storage semantics have been explicitly validated.
 - Never expose the worker secret, Facebook cookies, profile files, or approval records to the frontend or AI.
