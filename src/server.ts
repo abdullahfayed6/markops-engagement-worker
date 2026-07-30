@@ -32,7 +32,7 @@ export function createApp() {
   app.use((req, res, next) => isAuthorized(req.header('X-Worker-Secret')) ? next() : res.status(401).json(errorBody('', res.locals.requestId, 'UNAUTHORIZED', 'Missing or invalid X-Worker-Secret.')));
   const account = (req: Request) => { const value = req.params.accountId; if (Array.isArray(value) || !value) throw new ApiError('INVALID_ACCOUNT_ID', 'accountId must be a single path value.'); return assertAccountId(value); };
   app.get('/accounts', async (_req, res) => { let accountIds: string[] = []; try { accountIds = (await readdir(config.PROFILE_ROOT, { withFileTypes: true })).filter((x) => x.isDirectory() && !x.name.startsWith('.')).map((x) => x.name).filter((x) => { try { assertAccountId(x); return true; } catch { return false; } }); } catch { /* empty */ } res.json({ accountIds, maxActiveBrowsers: config.MAX_ACTIVE_BROWSERS }); });
-  const proxySchema = z.object({ proxy: z.string().url().optional() });
+  const proxySchema = z.object({ proxy: z.string().url().nullish() });
   app.post('/accounts/:accountId/login/start', async (req, res) => { const { proxy } = proxySchema.parse(req.body); res.status(201).json(await sessions.start(account(req), proxy)); });
   app.get('/accounts/:accountId/session', async (req, res) => res.json(await sessions.get(account(req))));
   app.post('/accounts/:accountId/session/continue', async (req, res) => res.json(await sessions.continue(account(req))));
