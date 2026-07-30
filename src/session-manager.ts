@@ -1,5 +1,8 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { BrowserContext, Locator, Page, chromium } from 'playwright';
+import { BrowserContext, Locator, Page } from 'playwright';
+import { chromium } from 'playwright-extra';
+import stealth from 'puppeteer-extra-plugin-stealth';
+chromium.use(stealth());
 import { config } from './config.js';
 import { AccountLockManager } from './account-lock-manager.js';
 import { ApprovalRecord, ApprovalStore } from './approval-store.js';
