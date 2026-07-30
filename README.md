@@ -1,5 +1,7 @@
 # MarkOps Engagement Worker
 
+For the complete main-application integration contract, endpoint reference, retry policy, and OpenAPI specification, see [docs/INTEGRATION.md](docs/INTEGRATION.md) and [docs/openapi.yaml](docs/openapi.yaml).
+
 Railway-deployable, manual-browser worker for isolated Facebook account profiles. It uses headed Chromium, Xvfb, x11vnc, and noVNC. It does not store passwords, solve CAPTCHA/2FA/checkpoints, use stealth or proxy rotation, generate comments, or run scheduled/bulk actions.
 
 ## Local development

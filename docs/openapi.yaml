@@ -1,0 +1,227 @@
+openapi: 3.1.0
+info:
+  title: MarkOps Engagement Worker API
+  version: 1.0.0
+  description: Persistent Facebook browser-session worker for manual login, post inspection, and explicitly approved actions.
+  license:
+    name: Proprietary
+servers:
+  - url: https://markops-engagement-worker-production.up.railway.app
+security:
+  - WorkerSecret: []
+paths:
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: Worker is running
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, const: ok }
+  /accounts:
+    get:
+      operationId: listAccounts
+      summary: List stored account profiles
+      responses:
+        '200':
+          description: Account list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accountIds, maxActiveBrowsers]
+                properties:
+                  accountIds:
+                    type: array
+                    items: { type: string }
+                  maxActiveBrowsers: { type: integer, minimum: 1 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /accounts/{accountId}/login/start:
+    post:
+      operationId: startLoginSession
+      summary: Start interactive Facebook login
+      parameters: [{ $ref: '#/components/parameters/AccountId' }]
+      responses:
+        '201': { $ref: '#/components/responses/WorkerResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/WorkerError' }
+        '429': { $ref: '#/components/responses/WorkerError' }
+  /accounts/{accountId}/session:
+    get:
+      operationId: getAccountSession
+      summary: Get active browser-session state
+      parameters: [{ $ref: '#/components/parameters/AccountId' }]
+      responses:
+        '200': { $ref: '#/components/responses/WorkerResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /accounts/{accountId}/session/continue:
+    post:
+      operationId: continueAccountSession
+      summary: Continue after manual login or verification
+      parameters: [{ $ref: '#/components/parameters/AccountId' }]
+      responses:
+        '200': { $ref: '#/components/responses/WorkerResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/WorkerError' }
+  /accounts/{accountId}/session/cancel:
+    post:
+      operationId: cancelAccountSession
+      summary: Cancel active browser session
+      parameters: [{ $ref: '#/components/parameters/AccountId' }]
+      responses:
+        '200': { $ref: '#/components/responses/WorkerResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/WorkerError' }
+  /accounts/{accountId}/session/validate:
+    post:
+      operationId: validateAccountSession
+      summary: Validate saved Facebook session
+      parameters: [{ $ref: '#/components/parameters/AccountId' }]
+      responses:
+        '200': { $ref: '#/components/responses/WorkerResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/WorkerError' }
+  /accounts/{accountId}:
+    delete:
+      operationId: deleteAccountProfile
+      summary: Delete persistent account profile
+      parameters: [{ $ref: '#/components/parameters/AccountId' }]
+      responses:
+        '200': { $ref: '#/components/responses/WorkerResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/WorkerError' }
+  /accounts/{accountId}/posts/inspect:
+    post:
+      operationId: inspectPost
+      summary: Read linked post text and publisher name
+      parameters: [{ $ref: '#/components/parameters/AccountId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostRequest'
+      responses:
+        '200':
+          description: Inspection result or manual-intervention response
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/WorkerResponse'
+                  - type: object
+                    properties:
+                      result:
+                        $ref: '#/components/schemas/PostInspection'
+        '400': { $ref: '#/components/responses/WorkerError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /accounts/{accountId}/posts/execute:
+    post:
+      operationId: executeApprovedAction
+      summary: Execute one explicitly approved action
+      parameters: [{ $ref: '#/components/parameters/AccountId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/ReactionRequest'
+                - $ref: '#/components/schemas/CommentRequest'
+      responses:
+        '200': { $ref: '#/components/responses/WorkerResponse' }
+        '400': { $ref: '#/components/responses/WorkerError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/WorkerError' }
+        '429': { $ref: '#/components/responses/WorkerError' }
+components:
+  securitySchemes:
+    WorkerSecret:
+      type: apiKey
+      in: header
+      name: X-Worker-Secret
+  parameters:
+    AccountId:
+      name: accountId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$'
+  schemas:
+    Status:
+      type: string
+      enum: [idle, starting, browser_ready, manual_intervention_required, running, completed, failed, cancelled, timed_out, session_expired, outcome_unknown]
+    WorkerResponse:
+      type: object
+      required: [accountId, sessionId, status, viewerUrl, loggedIn, errorCode, errorMessage]
+      properties:
+        accountId: { type: string }
+        sessionId: { type: [string, 'null'], format: uuid }
+        status: { $ref: '#/components/schemas/Status' }
+        viewerUrl: { type: [string, 'null'], format: uri }
+        loggedIn: { type: boolean }
+        errorCode: { type: [string, 'null'] }
+        errorMessage: { type: [string, 'null'] }
+        requestId: { type: string }
+        result: { type: object, additionalProperties: true }
+    PostRequest:
+      type: object
+      required: [postUrl]
+      additionalProperties: false
+      properties:
+        postUrl: { type: string, format: uri }
+    PostInspection:
+      type: object
+      required: [visiblePostText, visibleAuthorName]
+      additionalProperties: false
+      properties:
+        visiblePostText: { type: string, maxLength: 12000 }
+        visibleAuthorName: { type: string }
+    ReactionRequest:
+      type: object
+      required: [postUrl, action, reaction, approvalId]
+      additionalProperties: false
+      properties:
+        postUrl: { type: string, format: uri }
+        action: { type: string, const: react }
+        reaction:
+          type: string
+          enum: [like, love, care, haha, wow, sad, angry]
+        approvalId:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$'
+    CommentRequest:
+      type: object
+      required: [postUrl, action, comment, approvalId]
+      additionalProperties: false
+      properties:
+        postUrl: { type: string, format: uri }
+        action: { type: string, const: comment }
+        comment: { type: string, minLength: 1, maxLength: 5000 }
+        approvalId:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$'
+  responses:
+    WorkerResponse:
+      description: Worker response
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/WorkerResponse' }
+    WorkerError:
+      description: Worker error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/WorkerResponse' }
+    Unauthorized:
+      description: Missing or invalid worker secret
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/WorkerResponse' }
