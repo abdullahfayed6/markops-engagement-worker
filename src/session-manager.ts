@@ -25,7 +25,25 @@ export class SessionManager {
     try {
       // Per-account proxy takes priority; falls back to global BROWSER_PROXY env var.
       const resolvedProxy = proxy ?? config.BROWSER_PROXY;
-      const proxySettings = resolvedProxy ? { proxy: { server: resolvedProxy } } : {};
+      let proxySettings: any = {};
+      if (resolvedProxy) {
+        try {
+          const u = new URL(resolvedProxy);
+          if (u.username || u.password) {
+            proxySettings = {
+              proxy: {
+                server: `${u.protocol}//${u.host}`,
+                username: decodeURIComponent(u.username),
+                password: decodeURIComponent(u.password)
+              }
+            };
+          } else {
+            proxySettings = { proxy: { server: resolvedProxy } };
+          }
+        } catch {
+          proxySettings = { proxy: { server: resolvedProxy } };
+        }
+      }
       const context = await chromium.launchPersistentContext(this.locks.profilePath(accountId), { headless: !interactive, viewport: { width: 1280, height: 720 }, ...proxySettings, args: ['--no-sandbox', '--disable-dev-shm-usage', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-gpu', '--disable-software-rasterizer', '--disable-extensions', '--disable-default-apps', '--disable-sync', '--disable-translate', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-features=TranslateUI,BlinkGenPropertyTrees', '--mute-audio', '--hide-scrollbars', '--metrics-recording-only', '--memory-pressure-off', '--js-flags=--max-old-space-size=256'] });
 
       const page = context.pages()[0] ?? await context.newPage();
